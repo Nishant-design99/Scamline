@@ -108,12 +108,16 @@ const GAME_HOW_TO_PLAY = {
 };
 
 function startNextGame(lobby) {
-  if (lobby.roundIndex >= lobby.maxRounds || lobby.gameQueue.length === 0) {
+  if (lobby.roundIndex >= lobby.maxRounds || !lobby.gameQueue || lobby.gameQueue.length === 0) {
     endMatch(lobby);
     return;
   }
 
-  const gameId = lobby.gameQueue[lobby.roundIndex % lobby.gameQueue.length];
+  if (!lobby.remainingGames || lobby.remainingGames.length === 0) {
+    lobby.remainingGames = shuffleArray([...lobby.gameQueue]);
+  }
+
+  const gameId = lobby.remainingGames.pop();
   const gameDef = GAMES.find(g => g.id === gameId);
   lobby.currentGame = gameId;
   lobby.state = 'preview';
@@ -510,7 +514,9 @@ io.on('connection', (socket) => {
     if (!lobby || lobby.host !== socket.id) return;
     if (lobby.players.length < 2) { socket.emit('error', { msg: 'Need at least 2 players' }); return; }
 
-    lobby.gameQueue = selectedGames && selectedGames.length >= 1 ? selectedGames : GAMES.map(g => g.id);
+    const pool = selectedGames && selectedGames.length >= 1 ? selectedGames : GAMES.map(g => g.id);
+    lobby.gameQueue = shuffleArray([...pool]);
+    lobby.remainingGames = shuffleArray([...pool]);
     lobby.roundIndex = 0;
     lobby.players.forEach(p => { p.score = 0; p.ready = false; });
     startNextGame(lobby);

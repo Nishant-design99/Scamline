@@ -46,6 +46,24 @@ let activeCallId = null;  // currently active call peer ID
 let pendingCallFrom = null;
 let isMuted = false;
 
+// ─── Theme Management ─────────────────────────────────────────────────────────
+let currentTheme = localStorage.getItem('scamline_theme') || 'cyber';
+document.documentElement.setAttribute('data-theme', currentTheme);
+
+function toggleTheme() {
+  currentTheme = currentTheme === 'cyber' ? 'detective' : 'cyber';
+  localStorage.setItem('scamline_theme', currentTheme);
+  document.documentElement.setAttribute('data-theme', currentTheme);
+  updateThemeButtons();
+  toast(currentTheme === 'detective' ? '🕵️ Detective Dossier Theme' : '🎭 Cyber Neon Theme', 'info', '🎨');
+}
+
+function updateThemeButtons() {
+  document.querySelectorAll('.btn-theme-toggle').forEach(btn => {
+    btn.innerHTML = currentTheme === 'detective' ? '🕵️ Theme: Detective' : '🎭 Theme: Cyber';
+  });
+}
+
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' }
@@ -88,6 +106,11 @@ function showModal(title, body, confirmText, onConfirm, cancelText) {
 function renderLanding() {
   const screen = $('screen-landing');
   screen.innerHTML = `
+    <div style="position:absolute;top:20px;right:20px;z-index:10">
+      <button class="btn-ghost btn-theme-toggle" onclick="toggleTheme()" style="border:1px solid var(--border);border-radius:100px;padding:6px 14px">
+        ${currentTheme === 'detective' ? '🕵️ Theme: Detective' : '🎭 Theme: Cyber'}
+      </button>
+    </div>
     <div class="landing-hero">
       <div class="landing-badge">🎭 Social Deception Game</div>
       <h1 class="landing-title">
@@ -304,7 +327,10 @@ function renderLobby() {
           <div class="lobby-code" id="lobby-code" title="Click to copy">${lobby.code}</div>
           <button class="btn-ghost" id="btn-copy-code">📋 Copy</button>
         </div>
-        <div style="display:flex;gap:10px;align-items:center">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn-ghost btn-theme-toggle" onclick="toggleTheme()" style="border:1px solid var(--border);border-radius:100px;padding:6px 14px">
+            ${currentTheme === 'detective' ? '🕵️ Theme: Detective' : '🎭 Theme: Cyber'}
+          </button>
           <button id="btn-lobby-voice-toggle" class="btn-ghost" style="border:1px solid ${isMuted ? 'var(--danger)' : 'var(--teal)'};color:${isMuted ? 'var(--danger)' : 'var(--teal)'};border-radius:100px;padding:6px 14px;font-weight:600">
             ${isMuted ? '🔇 Voice: Muted' : '🎙️ Lobby Voice: On'}
           </button>
@@ -557,6 +583,9 @@ function renderGame(data) {
         <div class="hud-timer" id="hud-timer">--</div>
         <div class="hud-players-mini" id="hud-players-mini"></div>
         <button class="hud-btn-call" id="btn-open-calls">📞 Call Player</button>
+        <button class="btn-ghost btn-theme-toggle" style="font-size:12px" onclick="toggleTheme()">
+          ${currentTheme === 'detective' ? '🕵️ Detective' : '🎭 Cyber'}
+        </button>
         <button class="btn-ghost" style="font-size:12px" id="btn-game-leave">← Leave</button>
         ${isHost
           ? '<button class="btn-ghost" style="font-size:12px;color:var(--danger)" id="btn-force-end">⏭️ Skip</button><button class="btn-ghost" style="font-size:12px;color:var(--danger)" id="btn-close-game">✕ End Game</button>'
@@ -1541,10 +1570,18 @@ window.goHome = function() {
 async function getLocalStream() {
   if (localStream) return localStream;
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      },
+      video: false
+    });
     return localStream;
   } catch (e) {
-    toast('Microphone access denied', 'error', '🎤');
+    console.error('Microphone access error:', e);
+    toast('Microphone access denied or not found.', 'error', '🎤');
     return null;
   }
 }
@@ -1587,7 +1624,6 @@ async function acceptCall(fromId) {
   const stream = await getLocalStream();
   if (!stream) return;
 
-  // Wait for offer (it should come via socket shortly)
   const pc = createPeerConnection(fromId, false, stream);
   activeCallId = fromId;
   showCallHud(fromId);
@@ -1627,15 +1663,23 @@ function createPeerConnection(peerId, isInitiator, localStream) {
   };
 
   pc.ontrack = ({ streams }) => {
-    const audio = document.createElement('audio');
+    let audio = document.getElementById(`audio-${peerId}`);
+    if (!audio) {
+      audio = document.createElement('audio');
+      audio.id = `audio-${peerId}`;
+      audio.autoplay = true;
+      audio.playsInline = true;
+      document.body.appendChild(audio);
+    }
     audio.srcObject = streams[0];
-    audio.autoplay = true;
-    audio.id = `audio-${peerId}`;
-    document.body.appendChild(audio);
-    activeCallId = peerId;
-    showCallHud(peerId);
-    updateHudPlayers();
-    updateSidePlayers();
+    audio.play().catch(e => console.log('Audio autoplay error:', e));
+
+    if (lobby?.state === 'game') {
+      activeCallId = peerId;
+      showCallHud(peerId);
+      updateHudPlayers();
+      updateSidePlayers();
+    }
   };
 
   pc.onconnectionstatechange = () => {
@@ -1764,6 +1808,15 @@ function escHtml(str) {
   if (!str) return '';
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// Global audio context unlock for desktop browsers
+document.addEventListener('click', () => {
+  document.querySelectorAll('audio').forEach(audio => {
+    if (audio.paused && audio.srcObject) {
+      audio.play().catch(() => {});
+    }
+  });
+});
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 renderLanding();
