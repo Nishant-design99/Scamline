@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ScamLine — The Social Deception Game</title>
+  <meta name="description" content="ScamLine is a social deception web game for 4-8 players. Lie, manipulate, and survive 12 rounds of twisted mini-games with voice chat." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- SCREENS -->
+  <div id="screen-landing"  class="screen active"></div>
+  <div id="screen-lobby"    class="screen"></div>
+  <div id="screen-game"     class="screen"></div>
+  <div id="screen-results"  class="screen"></div>
+  <div id="screen-end"      class="screen"></div>
+
+  <!-- GLOBAL OVERLAYS -->
+  <div id="toast-container"></div>
+  <div id="modal-overlay" class="hidden">
+    <div id="modal-box">
+      <h2 id="modal-title"></h2>
+      <div id="modal-body"></div>
+      <div id="modal-actions"></div>
+    </div>
+  </div>
+
+  <!-- CALL NOTIFICATION -->
+  <div id="call-notification" class="hidden">
+    <div class="call-ring-anim"></div>
+    <div class="call-info">
+      <span id="call-caller-avatar"></span>
+      <div>
+        <div id="call-caller-name"></div>
+        <div class="call-subtitle">Incoming call...</div>
+      </div>
+    </div>
+    <div class="call-buttons">
+      <button id="btn-accept-call" class="btn-call-accept">📞 Accept</button>
+      <button id="btn-reject-call" class="btn-call-reject">❌ Reject</button>
+    </div>
+  </div>
+
+  <!-- ACTIVE CALL HUD -->
+  <div id="call-hud" class="hidden">
+    <div id="call-hud-info">
+      <span id="call-hud-avatar"></span>
+      <span id="call-hud-name"></span>
+      <span class="call-hud-badge">LIVE</span>
+    </div>
+    <div class="call-hud-controls">
+      <button id="btn-mute" class="hud-btn" title="Mute">🎤</button>
+      <button id="btn-end-call" class="hud-btn hud-btn-end" title="End call">📵</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
