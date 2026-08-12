@@ -266,6 +266,7 @@ function connectSocket(onReady) {
 
   socket.on('game:preview', (data) => {
     clearInterval(timerInterval);
+    endAllCalls();
     // Remove any lingering results overlays
     document.querySelectorAll('.results-overlay').forEach(e => e.remove());
     showGamePreview(data);
@@ -273,6 +274,7 @@ function connectSocket(onReady) {
 
   socket.on('lobby:closed', ({ reason }) => {
     clearInterval(timerInterval);
+    endAllCalls();
     removePreviewOverlay();
     toast(reason || 'Host closed the game', 'error', '🔒');
     lobby = null;
@@ -282,6 +284,7 @@ function connectSocket(onReady) {
 
   socket.on('lobby:left', () => {
     clearInterval(timerInterval);
+    endAllCalls();
     removePreviewOverlay();
     lobby = null;
     showScreen('screen-landing');
@@ -301,7 +304,10 @@ function renderLobby() {
           <div class="lobby-code" id="lobby-code" title="Click to copy">${lobby.code}</div>
           <button class="btn-ghost" id="btn-copy-code">📋 Copy</button>
         </div>
-        <div style="display:flex;gap:10px">
+        <div style="display:flex;gap:10px;align-items:center">
+          <button id="btn-lobby-voice-toggle" class="btn-ghost" style="border:1px solid ${isMuted ? 'var(--danger)' : 'var(--teal)'};color:${isMuted ? 'var(--danger)' : 'var(--teal)'};border-radius:100px;padding:6px 14px;font-weight:600">
+            ${isMuted ? '🔇 Voice: Muted' : '🎙️ Lobby Voice: On'}
+          </button>
           <div style="font-size:13px;color:var(--text-dim);padding:8px">
             <span id="lobby-player-count">${lobby.players.length}</span>/8 players
           </div>
@@ -388,10 +394,12 @@ function renderLobby() {
     $('btn-ready').onclick = () => socket.emit('lobby:ready');
   }
 
+  $('btn-lobby-voice-toggle').onclick = toggleLobbyMute;
   $('btn-chat-send').onclick = sendChat;
   $('chat-input').addEventListener('keydown', e => e.key === 'Enter' && sendChat());
 
   updatePlayersGrid();
+  initLobbyVoice();
 }
 
 function updateLobbyUI() {
@@ -399,6 +407,19 @@ function updateLobbyUI() {
     updatePlayersGrid();
     const count = $('lobby-player-count');
     if (count) count.textContent = lobby.players.length;
+
+    if (lobby) {
+      const playerIds = new Set(lobby.players.map(p => p.id));
+      Object.keys(peerConnections).forEach(peerId => {
+        if (!playerIds.has(peerId)) {
+          endCall(peerId);
+        }
+      });
+
+      if (lobby.state === 'lobby') {
+        initLobbyVoice();
+      }
+    }
 
     // Update start button
     const startBtn = $('btn-start');
@@ -536,9 +557,10 @@ function renderGame(data) {
         <div class="hud-timer" id="hud-timer">--</div>
         <div class="hud-players-mini" id="hud-players-mini"></div>
         <button class="hud-btn-call" id="btn-open-calls">📞 Call Player</button>
+        <button class="btn-ghost" style="font-size:12px" id="btn-game-leave">← Leave</button>
         ${isHost
           ? '<button class="btn-ghost" style="font-size:12px;color:var(--danger)" id="btn-force-end">⏭️ Skip</button><button class="btn-ghost" style="font-size:12px;color:var(--danger)" id="btn-close-game">✕ End Game</button>'
-          : '<button class="btn-ghost" style="font-size:12px" id="btn-game-leave">← Leave</button>'
+          : ''
         }
       </div>
 
@@ -1666,6 +1688,44 @@ function endCall(peerId) {
   if (pc) { pc.close(); delete peerConnections[peerId]; }
   const audio = document.getElementById(`audio-${peerId}`);
   if (audio) audio.remove();
+}
+
+function endAllCalls() {
+  Object.keys(peerConnections).forEach(peerId => {
+    endCall(peerId);
+  });
+  activeCallId = null;
+  const hud = $('call-hud');
+  if (hud) hud.classList.add('hidden');
+}
+
+async function initLobbyVoice() {
+  if (lobby?.state !== 'lobby') return;
+  const stream = await getLocalStream();
+  if (!stream) return;
+
+  lobby.players.forEach(p => {
+    if (p.id === myId) return;
+    if (!peerConnections[p.id]) {
+      if (myId < p.id) {
+        createPeerConnection(p.id, true, stream);
+      }
+    }
+  });
+}
+
+function toggleLobbyMute() {
+  isMuted = !isMuted;
+  if (localStream) {
+    localStream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
+  }
+  const btn = $('btn-lobby-voice-toggle');
+  if (btn) {
+    btn.innerHTML = isMuted ? '🔇 Voice: Muted' : '🎙️ Lobby Voice: On';
+    btn.style.borderColor = isMuted ? 'var(--danger)' : 'var(--teal)';
+    btn.style.color = isMuted ? 'var(--danger)' : 'var(--teal)';
+  }
+  toast(isMuted ? 'Muted' : 'Unmuted', 'info', isMuted ? '🔇' : '🎤');
 }
 
 function showCallPicker() {
