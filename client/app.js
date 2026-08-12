@@ -70,6 +70,7 @@ const ICE_SERVERS = [
   { urls: 'stun:stun2.l.google.com:19302' },
   { urls: 'stun:stun3.l.google.com:19302' },
   { urls: 'stun:stun4.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
   {
     urls: 'turn:openrelay.metered.ca:80',
     username: 'openrelayproject',
@@ -84,8 +85,21 @@ const ICE_SERVERS = [
     urls: 'turn:openrelay.metered.ca:443?transport=tcp',
     username: 'openrelayproject',
     credential: 'openrelayproject'
+  },
+  {
+    urls: 'turns:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
   }
 ];
+
+const RTC_CONFIG = {
+  iceServers: ICE_SERVERS,
+  iceTransportPolicy: 'all',
+  bundlePolicy: 'max-bundle',
+  rtcpMuxPolicy: 'require',
+  iceCandidatePoolSize: 10
+};
 
 let pendingIceCandidates = {}; // peerId -> array of candidate objects
 
@@ -1691,35 +1705,52 @@ async function handleOffer(fromId, offer) {
 
 function createPeerConnection(peerId, isInitiator, localStream) {
   if (peerConnections[peerId]) {
-    peerConnections[peerId].close();
+    try { peerConnections[peerId].close(); } catch(e) {}
     delete peerConnections[peerId];
   }
 
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const pc = new RTCPeerConnection(RTC_CONFIG);
   peerConnections[peerId] = pc;
 
-  localStream.getTracks().forEach(track => {
-    if (track.kind === 'audio') {
-      track.enabled = !isMuted;
-    }
-    pc.addTrack(track, localStream);
-  });
+  if (localStream) {
+    localStream.getTracks().forEach(track => {
+      if (track.kind === 'audio') {
+        track.enabled = !isMuted;
+      }
+      pc.addTrack(track, localStream);
+    });
+  }
 
   pc.onicecandidate = ({ candidate }) => {
-    if (candidate) socket.emit('webrtc:ice_candidate', { targetId: peerId, candidate });
+    if (candidate) {
+      socket.emit('webrtc:ice_candidate', { targetId: peerId, candidate });
+    }
   };
 
   pc.ontrack = ({ streams }) => {
+    if (!streams || !streams[0]) return;
     let audio = document.getElementById(`audio-${peerId}`);
     if (!audio) {
       audio = document.createElement('audio');
       audio.id = `audio-${peerId}`;
       audio.autoplay = true;
       audio.playsInline = true;
+      audio.style.display = 'none';
       document.body.appendChild(audio);
     }
     audio.srcObject = streams[0];
-    audio.play().catch(e => console.log('Audio autoplay error:', e));
+    audio.volume = 1.0;
+    audio.muted = false;
+
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(e => console.log('Audio autoplay prevented, unmuting on click:', e));
+    }
+
+    try {
+      if (!window.audioCtx) window.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (window.audioCtx.state === 'suspended') window.audioCtx.resume();
+    } catch(e) {}
 
     if (lobby?.state === 'game') {
       activeCallId = peerId;
@@ -1730,16 +1761,29 @@ function createPeerConnection(peerId, isInitiator, localStream) {
   };
 
   pc.onconnectionstatechange = () => {
-    if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+    console.log(`[WebRTC ${peerId}] Connection state: ${pc.connectionState}`);
+    if (pc.connectionState === 'failed') {
+      console.log(`[WebRTC ${peerId}] Connection failed, restarting ICE...`);
+      if (pc.restartIce) pc.restartIce();
+    } else if (pc.connectionState === 'closed') {
       endCall(peerId);
     }
   };
 
+  pc.oniceconnectionstatechange = () => {
+    console.log(`[WebRTC ${peerId}] ICE connection state: ${pc.iceConnectionState}`);
+    if (pc.iceConnectionState === 'failed') {
+      if (pc.restartIce) pc.restartIce();
+    }
+  };
+
   if (isInitiator) {
-    pc.createOffer().then(offer => {
-      pc.setLocalDescription(offer);
-      socket.emit('webrtc:offer', { targetId: peerId, offer });
-    });
+    pc.createOffer({ offerToReceiveAudio: true })
+      .then(offer => pc.setLocalDescription(offer))
+      .then(() => {
+        socket.emit('webrtc:offer', { targetId: peerId, offer: pc.localDescription });
+      })
+      .catch(e => console.error('Error creating WebRTC offer:', e));
   }
 
   return pc;
@@ -1886,10 +1930,13 @@ function escHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// Global audio context unlock for desktop browsers
+// Global audio context unlock for desktop/mobile browsers
 document.addEventListener('click', () => {
+  if (window.audioCtx && window.audioCtx.state === 'suspended') {
+    window.audioCtx.resume();
+  }
   document.querySelectorAll('audio').forEach(audio => {
-    if (audio.paused && audio.srcObject) {
+    if (audio.srcObject) {
       audio.play().catch(() => {});
     }
   });
