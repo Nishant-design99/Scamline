@@ -263,6 +263,30 @@ function connectSocket(onReady) {
   socket.on('disconnect', () => {
     toast('Disconnected from server', 'error', '⚠️');
   });
+
+  socket.on('game:preview', (data) => {
+    clearInterval(timerInterval);
+    // Remove any lingering results overlays
+    document.querySelectorAll('.results-overlay').forEach(e => e.remove());
+    showGamePreview(data);
+  });
+
+  socket.on('lobby:closed', ({ reason }) => {
+    clearInterval(timerInterval);
+    removePreviewOverlay();
+    toast(reason || 'Host closed the game', 'error', '🔒');
+    lobby = null;
+    showScreen('screen-landing');
+    renderLanding();
+  });
+
+  socket.on('lobby:left', () => {
+    clearInterval(timerInterval);
+    removePreviewOverlay();
+    lobby = null;
+    showScreen('screen-landing');
+    renderLanding();
+  });
 }
 
 // ─── Lobby Screen ─────────────────────────────────────────────────────────────
@@ -282,6 +306,7 @@ function renderLobby() {
             <span id="lobby-player-count">${lobby.players.length}</span>/8 players
           </div>
           <button class="btn-ghost" id="btn-leave">← Leave</button>
+          ${isHost ? '<button class="btn-ghost" style="color:var(--danger)" id="btn-close-lobby">✕ Close Game</button>' : ''}
         </div>
       </div>
 
@@ -337,11 +362,22 @@ function renderLobby() {
   // Events
   $('lobby-code').onclick = copyCode;
   $('btn-copy-code').onclick = copyCode;
-  $('btn-leave').onclick = () => showModal('Leave Lobby', 'Are you sure you want to leave?', 'Leave', () => {
-    socket.disconnect();
-    lobby = null;
-    showScreen('screen-landing');
-  }, 'Stay');
+  $('btn-leave').onclick = () => showModal(
+    'Leave Lobby',
+    'Are you sure you want to leave?',
+    'Leave',
+    () => { socket.emit('lobby:leave'); },
+    'Stay'
+  );
+  if (isHost && $('btn-close-lobby')) {
+    $('btn-close-lobby').onclick = () => showModal(
+      '✕ Close Game',
+      'This will end the game for ALL players. Are you sure?',
+      'Close for Everyone',
+      () => { socket.emit('lobby:close'); },
+      'Cancel'
+    );
+  }
 
   if (isHost) {
     renderGameChips();
@@ -500,7 +536,10 @@ function renderGame(data) {
         <div class="hud-timer" id="hud-timer">--</div>
         <div class="hud-players-mini" id="hud-players-mini"></div>
         <button class="hud-btn-call" id="btn-open-calls">📞 Call Player</button>
-        ${isHost ? '<button class="btn-ghost" style="font-size:12px" id="btn-force-end">⏭️ Skip</button>' : ''}
+        ${isHost
+          ? '<button class="btn-ghost" style="font-size:12px;color:var(--danger)" id="btn-force-end">⏭️ Skip</button><button class="btn-ghost" style="font-size:12px;color:var(--danger)" id="btn-close-game">✕ End Game</button>'
+          : '<button class="btn-ghost" style="font-size:12px" id="btn-game-leave">← Leave</button>'
+        }
       </div>
 
       <!-- Game Area -->
@@ -540,6 +579,21 @@ function renderGame(data) {
 
   if (isHost) {
     $('btn-force-end').onclick = () => socket.emit('game:force_resolve');
+    $('btn-close-game').onclick = () => showModal(
+      '✕ End Game',
+      'This will end the game for ALL players immediately. Are you sure?',
+      'End for Everyone',
+      () => { socket.emit('lobby:close'); },
+      'Cancel'
+    );
+  } else {
+    $('btn-game-leave').onclick = () => showModal(
+      'Leave Game',
+      'You will leave the game and return to the main menu. Your score will be lost.',
+      'Leave',
+      () => { socket.emit('lobby:leave'); },
+      'Stay'
+    );
   }
 
   $('btn-open-calls').onclick = showCallPicker;
@@ -554,6 +608,124 @@ function sendGameChat() {
   socket.emit('chat:message', { message });
   inp.value = '';
 }
+
+// ─── Game Preview Overlay (15s countdown) ─────────────────────────────────────
+let previewCountdownInterval = null;
+
+function removePreviewOverlay() {
+  clearInterval(previewCountdownInterval);
+  const existing = document.getElementById('game-preview-overlay');
+  if (existing) existing.remove();
+}
+
+function showGamePreview(data) {
+  removePreviewOverlay();
+  showScreen('screen-game');
+
+  // Render empty game shell so preview sits on top of it
+  const screen = $('screen-game');
+  screen.innerHTML = `
+    <div class="game-layout">
+      <div class="game-hud" style="justify-content:center;gap:16px">
+        <span style="font-size:16px;font-weight:700;color:var(--text-dim)">
+          Round ${data.roundIndex} / ${data.maxRounds} — Next game starting...
+        </span>
+      </div>
+      <div class="game-area" style="grid-column:1/-1"></div>
+    </div>
+  `;
+
+  const overlay = el('div', '');
+  overlay.id = 'game-preview-overlay';
+  overlay.style.cssText = `
+    position:fixed;inset:0;z-index:200;
+    background:rgba(8,11,20,0.96);
+    backdrop-filter:blur(20px);
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    gap:24px;padding:32px;
+    animation:fadeIn 0.4s ease;
+  `;
+
+  let secondsLeft = data.countdown || 15;
+
+  overlay.innerHTML = `
+    <div style="text-align:center;animation:fadeUp 0.5s ease">
+      <div style="font-size:13px;font-weight:600;letter-spacing:0.15em;text-transform:uppercase;color:var(--text-dim);margin-bottom:12px">
+        Round ${data.roundIndex} of ${data.maxRounds}
+      </div>
+      <div style="font-size:90px;line-height:1;margin-bottom:16px;animation:iconPop 0.6s cubic-bezier(0.175,0.885,0.32,1.275)">
+        ${data.game.icon}
+      </div>
+      <h2 style="font-size:clamp(36px,6vw,64px);font-weight:900;letter-spacing:-0.02em;margin-bottom:12px;
+        background:linear-gradient(135deg,#ff5f5f,#ff9a3c);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">
+        ${data.game.name}
+      </h2>
+    </div>
+
+    <div style="
+      max-width:560px;width:100%;
+      background:rgba(255,255,255,0.04);
+      border:1px solid rgba(255,255,255,0.08);
+      border-radius:20px;padding:24px 28px;
+      animation:fadeUp 0.5s ease 0.1s both;
+    ">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin-bottom:10px">
+        📖 How to Play
+      </div>
+      <p style="font-size:16px;line-height:1.7;color:var(--text-dim)">${data.howToPlay}</p>
+    </div>
+
+    <div style="text-align:center;animation:fadeUp 0.5s ease 0.2s both">
+      <div style="font-size:13px;color:var(--text-dim);margin-bottom:8px">Game starts in</div>
+      <div id="preview-countdown" style="
+        font-size:72px;font-weight:900;
+        font-family:'JetBrains Mono',monospace;
+        color:var(--text);
+        text-shadow:0 0 40px rgba(255,95,95,0.4);
+        transition:color 0.3s;
+        line-height:1;
+      ">${secondsLeft}</div>
+      <div style="margin-top:16px;width:200px;height:4px;background:rgba(255,255,255,0.08);border-radius:100px;overflow:hidden">
+        <div id="preview-progress" style="
+          height:100%;width:100%;
+          background:linear-gradient(90deg,var(--accent),var(--accent2));
+          border-radius:100px;
+          transition:width 1s linear;
+        "></div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Countdown tick
+  previewCountdownInterval = setInterval(() => {
+    secondsLeft--;
+    const cdEl = document.getElementById('preview-countdown');
+    const progEl = document.getElementById('preview-progress');
+    if (cdEl) {
+      cdEl.textContent = secondsLeft;
+      cdEl.style.color = secondsLeft <= 5 ? 'var(--accent)' : 'var(--text)';
+      cdEl.style.textShadow = secondsLeft <= 5
+        ? '0 0 40px rgba(255,95,95,0.8)'
+        : '0 0 40px rgba(255,95,95,0.4)';
+      if (secondsLeft <= 5 && secondsLeft > 0) {
+        cdEl.style.animation = 'none';
+        cdEl.offsetHeight; // force reflow
+        cdEl.style.animation = 'iconPop 0.2s cubic-bezier(0.175,0.885,0.32,1.275)';
+      }
+    }
+    if (progEl) {
+      progEl.style.width = `${(secondsLeft / (data.countdown || 15)) * 100}%`;
+    }
+    if (secondsLeft <= 0) {
+      clearInterval(previewCountdownInterval);
+      removePreviewOverlay();
+    }
+  }, 1000);
+}
+
 
 function updateHudPlayers() {
   const container = $('hud-players-mini');

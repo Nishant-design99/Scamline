@@ -89,6 +89,24 @@ function removePlayer(lobby, socketId) {
 
 // ─── Game Logic ───────────────────────────────────────────────────────────────
 
+const GAME_HOW_TO_PLAY = {
+  room_numbers:      'You have been assigned a secret room number. Call other players and ask for their room numbers — but beware, they can lie! Guess everyone\'s room number before the timer ends.',
+  bomb_defusal:      'Your code fragment is shown privately. Call every player to collect all fragments. Type the full assembled code to defuse the bomb before time runs out!',
+  prisoners_dilemma: 'You can\'t talk to anyone — choose to Cooperate or Betray. If both cooperate you both get points. If you betray while they cooperate, you get more. If both betray, nobody wins.',
+  odd_one_out:       'Everyone has the same attribute colour — except one person. Call players, share your colour, and figure out who has a different one. Vote before the timer ends!',
+  secret_word:       'Everyone has the same secret word — except one imposter. Discuss your words via calls without giving it away. Vote for who you think has a different word.',
+  hot_seat:          'One unlucky player is in the Hot Seat and must answer personal questions. Everyone else listens via calls and votes: Truth or Lie? Hot seat player earns points for convincing lies!',
+  chain_lie:         'The first player receives a message and passes it to the next via a call — but they can distort it! The message travels down the chain. Most creative distortion wins.',
+  spy_hunt:          'One player is the spy and doesn\'t know the location. Civilians must ask clever questions to expose the spy without revealing the location. Spy wins by guessing the location!',
+  fake_news:         'Everyone received the same fact — except one player who got a fake version. Share your facts via calls and vote for who you think has the fake one.',
+  trust_fall:        'You\'ve been paired with another player. Call them and complete the shared task together. Both must agree the task is done to earn points.',
+  auction:           'Four mystery items are up for bid. Call others to bluff about item values. Spend your budget wisely — highest bidder wins each item, but only real value counts!',
+  color_grid:        'You can see some cells of a shared 4×4 grid. Call other players to learn their cell colours, then fill in the full grid. Most accurate grid wins!',
+  password_game:     'One player per team gives one-word clues. Their teammates guess the secret password. No saying the word itself — be clever with your clues!',
+  alibi:             'One player is accused of a ridiculous crime. Others interrogate them via calls and vote guilty or innocent. Suspect earns points if they convince enough people.',
+  consensus:         'Everyone must give the same answer to a question — but you can only coordinate via calls! Most players matching on the same answer wins points for each of them.'
+};
+
 function startNextGame(lobby) {
   if (lobby.roundIndex >= lobby.maxRounds || lobby.gameQueue.length === 0) {
     endMatch(lobby);
@@ -98,27 +116,40 @@ function startNextGame(lobby) {
   const gameId = lobby.gameQueue[lobby.roundIndex % lobby.gameQueue.length];
   const gameDef = GAMES.find(g => g.id === gameId);
   lobby.currentGame = gameId;
-  lobby.state = 'game';
-  lobby.gameData = initGameData(gameId, lobby.players);
+  lobby.state = 'preview';
 
-  io.to(lobby.code).emit('game:start', {
+  // ── 15-second preview before game starts ──
+  const howToPlay = GAME_HOW_TO_PLAY[gameId] || gameDef.desc;
+  io.to(lobby.code).emit('game:preview', {
     roundIndex: lobby.roundIndex + 1,
     maxRounds: lobby.maxRounds,
     game: gameDef,
-    gameData: filterGameData(gameId, lobby.gameData, null) // public data
+    howToPlay,
+    countdown: 15
   });
 
-  // Send private data to each player
-  lobby.players.forEach(player => {
-    const privateData = filterGameData(gameId, lobby.gameData, player.id);
-    io.to(player.id).emit('game:private_data', privateData);
-  });
+  lobby.previewTimer = setTimeout(() => {
+    if (!lobbies[lobby.code]) return;
+    lobby.state = 'game';
+    lobby.gameData = initGameData(gameId, lobby.players);
 
-  // Set timer for game
-  const duration = getGameDuration(gameId);
-  lobby.gameTimer = setTimeout(() => {
-    resolveGame(lobby);
-  }, duration * 1000);
+    io.to(lobby.code).emit('game:start', {
+      roundIndex: lobby.roundIndex + 1,
+      maxRounds: lobby.maxRounds,
+      game: gameDef,
+      gameData: filterGameData(gameId, lobby.gameData, null)
+    });
+
+    lobby.players.forEach(player => {
+      const privateData = filterGameData(gameId, lobby.gameData, player.id);
+      io.to(player.id).emit('game:private_data', privateData);
+    });
+
+    const duration = getGameDuration(gameId);
+    lobby.gameTimer = setTimeout(() => {
+      resolveGame(lobby);
+    }, duration * 1000);
+  }, 15000);
 }
 
 function initGameData(gameId, players) {
@@ -493,6 +524,34 @@ io.on('connection', (socket) => {
     io.to(lobby.code).emit('lobby:update', lobby);
   });
 
+  socket.on('lobby:close', () => {
+    const lobby = getPlayerLobby(socket.id);
+    if (!lobby || lobby.host !== socket.id) return;
+    clearTimeout(lobby.gameTimer);
+    clearTimeout(lobby.previewTimer);
+    io.to(lobby.code).emit('lobby:closed', { reason: 'Host closed the game.' });
+    // Disconnect all from room
+    io.in(lobby.code).socketsLeave(lobby.code);
+    delete lobbies[lobby.code];
+    console.log(`[Lobby] ${lobby.code} closed by host`);
+  });
+
+  socket.on('lobby:leave', () => {
+    const lobby = getPlayerLobby(socket.id);
+    if (!lobby) return;
+    const player = lobby.players.find(p => p.id === socket.id);
+    removePlayer(lobby, socket.id);
+    socket.leave(lobby.code);
+    if (player) io.to(lobby.code).emit('chat:message', { sender: 'System', avatar: '⚙️', message: `${player.name} left the game`, timestamp: Date.now() });
+    io.to(lobby.code).emit('lobby:update', lobby);
+    socket.emit('lobby:left');
+    if (lobby.players.length === 0) {
+      clearTimeout(lobby.gameTimer);
+      clearTimeout(lobby.previewTimer);
+      delete lobbies[lobby.code];
+    }
+  });
+
   // ── Game Actions ──
   socket.on('game:action', ({ action, payload }) => {
     const lobby = getPlayerLobby(socket.id);
@@ -620,6 +679,7 @@ io.on('connection', (socket) => {
     if (player) io.to(lobby.code).emit('chat:message', { sender: 'System', avatar: '⚙️', message: `${player.name} left the game`, timestamp: Date.now() });
     if (lobby.players.length === 0) {
       clearTimeout(lobby.gameTimer);
+      clearTimeout(lobby.previewTimer);
       delete lobbies[lobby.code];
       console.log(`[Lobby] ${lobby.code} deleted (empty)`);
     }
