@@ -1578,6 +1578,7 @@ async function getLocalStream() {
       },
       video: false
     });
+    localStream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
     return localStream;
   } catch (e) {
     console.error('Microphone access error:', e);
@@ -1656,7 +1657,12 @@ function createPeerConnection(peerId, isInitiator, localStream) {
   const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
   peerConnections[peerId] = pc;
 
-  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  localStream.getTracks().forEach(track => {
+    if (track.kind === 'audio') {
+      track.enabled = !isMuted;
+    }
+    pc.addTrack(track, localStream);
+  });
 
   pc.onicecandidate = ({ candidate }) => {
     if (candidate) socket.emit('webrtc:ice_candidate', { targetId: peerId, candidate });
@@ -1708,13 +1714,42 @@ function showCallHud(peerId) {
   $('btn-end-call').onclick = () => endCallActive();
 }
 
-function toggleMute() {
-  isMuted = !isMuted;
+function setMuteState(muted) {
+  isMuted = muted;
+
   if (localStream) {
     localStream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
   }
-  $('btn-mute').textContent = isMuted ? '🔇' : '🎤';
+
+  Object.values(peerConnections).forEach(pc => {
+    pc.getSenders().forEach(sender => {
+      if (sender.track && sender.track.kind === 'audio') {
+        sender.track.enabled = !isMuted;
+      }
+    });
+  });
+
+  const lobbyBtn = $('btn-lobby-voice-toggle');
+  if (lobbyBtn) {
+    lobbyBtn.innerHTML = isMuted ? '🔇 Voice: Muted' : '🎙️ Lobby Voice: On';
+    lobbyBtn.style.borderColor = isMuted ? 'var(--danger)' : 'var(--teal)';
+    lobbyBtn.style.color = isMuted ? 'var(--danger)' : 'var(--teal)';
+  }
+
+  const hudBtn = $('btn-mute');
+  if (hudBtn) {
+    hudBtn.textContent = isMuted ? '🔇' : '🎤';
+  }
+
   toast(isMuted ? 'Muted' : 'Unmuted', 'info', isMuted ? '🔇' : '🎤');
+}
+
+function toggleMute() {
+  setMuteState(!isMuted);
+}
+
+function toggleLobbyMute() {
+  setMuteState(!isMuted);
 }
 
 function endCallActive() {
