@@ -106,13 +106,13 @@ function showModal(title, body, confirmText, onConfirm, cancelText) {
 function renderLanding() {
   const screen = $('screen-landing');
   screen.innerHTML = `
-    <div style="position:absolute;top:20px;right:20px;z-index:10">
+    <div class="landing-top-bar">
+      <div class="landing-badge">🎭 Social Deception Game</div>
       <button class="btn-ghost btn-theme-toggle" onclick="toggleTheme()" style="border:1px solid var(--border);border-radius:100px;padding:6px 14px">
         ${currentTheme === 'detective' ? '🕵️ Theme: Detective' : '🎭 Theme: Cyber'}
       </button>
     </div>
     <div class="landing-hero">
-      <div class="landing-badge">🎭 Social Deception Game</div>
       <h1 class="landing-title">
         <span class="word-scam">SCAM</span>
         <span class="word-line">LINE</span>

@@ -34,70 +34,183 @@
   --shadow-deep: 0 24px 64px rgba(0,0,0,0.6);
 }
 
-/* ─── Detective Dossier Theme (Manila Paper & Confidential Stamps) ── */
+/* ─── Detective Dossier / Office Case Files Theme ────────────────── */
 html[data-theme="detective"] {
-  --bg-deep:    #181512;
-  --bg-card:    #26201b;
-  --bg-glass:   rgba(220, 185, 140, 0.06);
-  --bg-glass2:  rgba(220, 185, 140, 0.12);
-  --border:     rgba(220, 185, 140, 0.18);
-  --border-glow:rgba(217, 75, 75, 0.5);
+  --bg-deep:    #1a1512; /* Dark desk wood */
+  --bg-card:    #ebd7b0; /* Manila folder paper */
+  --bg-glass:   rgba(90, 70, 50, 0.08);
+  --bg-glass2:  rgba(90, 70, 50, 0.14);
+  --border:     #c4ae85; /* Stitched paper border */
+  --border-glow:#ad2828;
 
-  --accent:     #d94b4b; /* Ink stamp red */
-  --accent2:    #d9964b; /* Manila folder yellow */
-  --accent3:    #a67c52; /* Leather brown */
-  --teal:       #4ca685; /* Stamp green */
-  --gold:       #e6b800;
+  --accent:     #ad2828; /* Red Rubber Stamp Ink */
+  --accent2:    #c48037; /* Manila Amber */
+  --accent3:    #7a5938; /* Leather Brown */
+  --teal:       #368269; /* Vintage Ink Green */
+  --gold:       #b58d18;
 
-  --text:       #f5ede2; /* Manila cream text */
-  --text-dim:   #bdaea0;
-  --text-muted: #736456;
+  --text:       #1f1813; /* Dark Typewriter Ink Text */
+  --text-dim:   #5c4e40;
+  --text-muted: #8c7a69;
+
+  --success:    #368269;
+  --warning:    #c48037;
+  --danger:     #ad2828;
+
+  --shadow-deep: 0 16px 40px rgba(0,0,0,0.6);
 }
 
-/* Detective paperclip & confidential file details */
+/* Desk texture background in Detective mode */
+html[data-theme="detective"] #screen-landing,
+html[data-theme="detective"] #screen-lobby,
+html[data-theme="detective"] #screen-game,
+html[data-theme="detective"] #screen-end {
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(196, 128, 55, 0.08) 0%, transparent 70%),
+    var(--bg-deep);
+}
+
+html[data-theme="detective"] #screen-landing::before {
+  display: none;
+}
+
+/* Manila File Cards & Dossier Panels */
 html[data-theme="detective"] .panel,
 html[data-theme="detective"] .landing-card,
 html[data-theme="detective"] .results-card,
-html[data-theme="detective"] .end-card {
+html[data-theme="detective"] .end-card,
+html[data-theme="detective"] #modal-box {
   position: relative;
-  background-color: #241f1a;
-  background-image: radial-gradient(rgba(220, 185, 140, 0.06) 1px, transparent 0);
-  background-size: 20px 20px;
-  border: 1px solid rgba(220, 185, 140, 0.25);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.6), inset 0 0 30px rgba(0,0,0,0.4);
+  background: #ebd8b3;
+  background-image: linear-gradient(rgba(196, 160, 110, 0.12) 1px, transparent 1px);
+  background-size: 100% 24px; /* Notebook paper lines */
+  border: 2px solid #c7b089;
+  color: #1f1813;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
 }
 
-/* Paperclips 📎 on cards */
+/* Paperclips 📎 attached to top right of cards (pointer-events: none is CRITICAL so inputs work!) */
 html[data-theme="detective"] .panel::before,
 html[data-theme="detective"] .landing-card::before,
-html[data-theme="detective"] .results-card::before {
+html[data-theme="detective"] .results-card::before,
+html[data-theme="detective"] #modal-box::before {
   content: '📎';
   position: absolute;
   top: -14px;
   right: 20px;
-  font-size: 26px;
-  transform: rotate(18deg);
+  font-size: 28px;
+  transform: rotate(15deg);
   z-index: 10;
-  filter: drop-shadow(2px 3px 3px rgba(0,0,0,0.6));
+  pointer-events: none; /* Allows clicks and touch events to pass directly to input fields! */
+  filter: drop-shadow(2px 3px 3px rgba(0,0,0,0.5));
 }
 
-/* Confidential stamp aesthetic */
+/* Red Rubber Stamp Badges */
 html[data-theme="detective"] .landing-badge,
 html[data-theme="detective"] .private-label,
-html[data-theme="detective"] .hud-round {
-  border: 2px dashed #d94b4b;
-  color: #d94b4b;
-  background: rgba(217, 75, 75, 0.08);
-  font-family: 'JetBrains Mono', monospace;
+html[data-theme="detective"] .hud-round,
+html[data-theme="detective"] .player-badge {
+  border: 2px dashed #ad2828 !important;
+  color: #ad2828 !important;
+  background: rgba(173, 40, 40, 0.08) !important;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
   letter-spacing: 0.12em;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
-/* Manila grid overlay on landing screen */
-html[data-theme="detective"] #screen-landing::before {
-  background-image:
-    linear-gradient(rgba(220, 185, 140, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(220, 185, 140, 0.04) 1px, transparent 1px);
+/* Form Inputs in Detective Mode */
+html[data-theme="detective"] input.input-field,
+html[data-theme="detective"] input.chat-input,
+html[data-theme="detective"] input.code-input,
+html[data-theme="detective"] input.answer-input,
+html[data-theme="detective"] input.bid-input {
+  background: #f7f0e1 !important;
+  border: 2px solid #b8a078 !important;
+  color: #1a140f !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+  pointer-events: auto !important;
+}
+html[data-theme="detective"] input::placeholder {
+  color: #8c7a69 !important;
+}
+html[data-theme="detective"] input:focus {
+  border-color: #ad2828 !important;
+  box-shadow: 0 0 0 3px rgba(173, 40, 40, 0.15) !important;
+}
+
+/* Buttons in Detective Mode */
+html[data-theme="detective"] .btn-primary,
+html[data-theme="detective"] .btn-start,
+html[data-theme="detective"] .btn-submit-code {
+  background: #ad2828 !important;
+  color: #fceee9 !important;
+  border: 2px solid #801b1b !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  box-shadow: 0 4px 12px rgba(173, 40, 40, 0.35);
+}
+html[data-theme="detective"] .btn-primary:hover,
+html[data-theme="detective"] .btn-start:hover {
+  background: #942121 !important;
+  box-shadow: 0 6px 16px rgba(173, 40, 40, 0.5);
+}
+
+html[data-theme="detective"] .btn-secondary,
+html[data-theme="detective"] .btn-ready {
+  background: #d6be96 !important;
+  border: 1px solid #aa926d !important;
+  color: #241c14 !important;
+}
+html[data-theme="detective"] .btn-secondary:hover {
+  background: #c7af87 !important;
+}
+
+html[data-theme="detective"] .btn-ghost {
+  color: #4a3e33 !important;
+}
+html[data-theme="detective"] .btn-ghost:hover {
+  color: #1a140f !important;
+}
+
+/* Titles & Text in Detective Mode */
+html[data-theme="detective"] .landing-title .word-scam {
+  background: none;
+  -webkit-text-fill-color: initial;
+  color: #ad2828;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: -0.02em;
+}
+html[data-theme="detective"] .landing-title .word-line {
+  color: #1a140f;
+  font-family: 'JetBrains Mono', monospace;
+  text-shadow: none;
+}
+
+/* Player Cards, Chat & Game Elements in Detective Mode */
+html[data-theme="detective"] .player-card,
+html[data-theme="detective"] .game-chip,
+html[data-theme="detective"] .vote-card,
+html[data-theme="detective"] .choice-btn,
+html[data-theme="detective"] .room-btn,
+html[data-theme="detective"] .result-row,
+html[data-theme="detective"] .scoreboard-row {
+  background: #f0e2c8;
+  border: 1px solid #c7b089;
+  color: #1a140f;
+}
+
+html[data-theme="detective"] .game-hud {
+  background: #241b15;
+  border-bottom: 2px solid #3d2f25;
+  color: #f0e2c8;
+}
+
+html[data-theme="detective"] .game-side {
+  border-left: 2px solid #c7b089;
 }
 
 /* ─── Reset ─────────────────────────────────────────────────────── */
@@ -132,7 +245,9 @@ button { cursor: pointer; border: none; font-family: inherit; -webkit-tap-highli
    ═══════════════════════════════════════════════════════════════════ */
 #screen-landing {
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  overflow-y: auto;
+  padding: 30px 16px 60px;
   background:
     radial-gradient(ellipse at 20% 50%, rgba(255,95,95,0.12) 0%, transparent 60%),
     radial-gradient(ellipse at 80% 20%, rgba(123,97,255,0.10) 0%, transparent 60%),
@@ -140,6 +255,17 @@ button { cursor: pointer; border: none; font-family: inherit; -webkit-tap-highli
     var(--bg-deep);
   flex-direction: column;
   gap: 0;
+}
+
+.landing-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 440px;
+  margin-bottom: 16px;
+  position: relative;
+  z-index: 10;
 }
 
 /* Animated grid background */
