@@ -66,8 +66,28 @@ function updateThemeButtons() {
 
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' }
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
+  }
 ];
+
+let pendingIceCandidates = {}; // peerId -> array of candidate objects
 
 // ─── DOM Helpers ──────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -266,12 +286,25 @@ function connectSocket(onReady) {
 
   socket.on('webrtc:answer', async ({ fromId, answer }) => {
     const pc = peerConnections[fromId];
-    if (pc) await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    if (pc) {
+      await pc.setRemoteDescription(new RTCSessionDescription(answer)).catch(e => console.log('setRemoteDescription answer error:', e));
+      if (pendingIceCandidates[fromId]) {
+        for (const cand of pendingIceCandidates[fromId]) {
+          await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(e => {});
+        }
+        delete pendingIceCandidates[fromId];
+      }
+    }
   });
 
   socket.on('webrtc:ice_candidate', async ({ fromId, candidate }) => {
     const pc = peerConnections[fromId];
-    if (pc && candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => {});
+    } else {
+      if (!pendingIceCandidates[fromId]) pendingIceCandidates[fromId] = [];
+      pendingIceCandidates[fromId].push(candidate);
+    }
   });
 
   socket.on('webrtc:call_end', ({ fromId }) => {
@@ -1640,9 +1673,17 @@ async function handleOffer(fromId, offer) {
     pc = createPeerConnection(fromId, false, stream);
   }
 
-  if (pc.signalingState !== 'stable') return;
+  if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-local-offer') return;
 
-  await pc.setRemoteDescription(new RTCSessionDescription(offer));
+  await pc.setRemoteDescription(new RTCSessionDescription(offer)).catch(e => console.log('setRemoteDescription offer error:', e));
+
+  if (pendingIceCandidates[fromId]) {
+    for (const cand of pendingIceCandidates[fromId]) {
+      await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(e => {});
+    }
+    delete pendingIceCandidates[fromId];
+  }
+
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
   socket.emit('webrtc:answer', { targetId: fromId, answer });
@@ -1765,6 +1806,7 @@ function endCallActive() {
 function endCall(peerId) {
   const pc = peerConnections[peerId];
   if (pc) { pc.close(); delete peerConnections[peerId]; }
+  delete pendingIceCandidates[peerId];
   const audio = document.getElementById(`audio-${peerId}`);
   if (audio) audio.remove();
 }
