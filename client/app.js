@@ -7,7 +7,7 @@
 // ─── Config ──────────────────────────────────────────────────────────────────
 const SERVER_URL = window.location.hostname === 'localhost'
   ? 'http://localhost:3001'
-  : 'https://scamline-server.onrender.com'; // replace with your Render URL
+  : 'https://scamline.onrender.com';
 
 const GAMES_LIST = [
   { id: 'room_numbers',      name: 'Room Numbers',      icon: '🚪', desc: 'Guess your neighbors\' room numbers.' },
